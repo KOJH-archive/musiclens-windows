@@ -1,0 +1,19 @@
+# Local Python environment and generated files
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local diagnostics: keep on this computer, never publish
+musiclens-error.log*
+*.log
+
+# Build output
+build/
+dist/
+*.spec
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
