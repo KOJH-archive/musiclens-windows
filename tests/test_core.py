@@ -5,7 +5,7 @@ import wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from core import extract_song, make_wav, song_key
+from core import extract_song, make_wav, song_key, suppress_voice
 
 
 class CoreTests(unittest.TestCase):
@@ -31,6 +31,14 @@ class CoreTests(unittest.TestCase):
 
     def test_song_key_casefold(self):
         self.assertEqual(song_key({"title": "ABC", "artist": "KJH"}), song_key({"title": "abc", "artist": "kjh"}))
+
+    def test_suppress_voice_returns_valid_wav(self):
+        source = make_wav(b"\x00\x00" * 4096, rate=16000, channels=1)
+        reduced = suppress_voice(source)
+        with wave.open(io.BytesIO(reduced), "rb") as f:
+            self.assertEqual(f.getframerate(), 16000)
+            self.assertEqual(f.getnchannels(), 1)
+            self.assertEqual(f.getnframes(), 4096)
 
 
 if __name__ == "__main__":

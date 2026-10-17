@@ -39,7 +39,7 @@ Windows 기본 출력 장치에서 재생되는 음악을 별도 브라우저 �
 
 ```text
 start.bat
-  └─ start_background.bat ── pythonw.exe launcher.py
+  └─ start.bat ── pythonw.exe launcher.py
                              ├─ Win32 mutex/event: 단일 실행·기존 창 열기
                              ├─ 회전 로그·시작 오류 표시
                              └─ app.MusicLens
@@ -99,7 +99,7 @@ start.bat
 ## 7. 실행·배포·검증 상태
 
 - `start_debug.bat`: 가상환경이 없으면 만들고 `pip install -r requirements.txt`를 실행한 뒤 콘솔에서 시작한다.
-- `start.bat`: `start_background.bat`로 연결된다. 설치가 끝난 상태에서는 `pythonw.exe`를 분리 실행하고 CMD를 닫는다. 첫 설치가 필요하면 디버그 실행으로 전환된다.
+- `start.bat`: 설치가 끝난 상태에서는 `pythonw.exe`를 분리 실행하고 CMD를 닫는다. 첫 설치가 필요하면 디버그 실행으로 전환된다.
 - `build_exe.bat`: PyInstaller 폴더형 `--windowed` 빌드를 정의한다. 실제 exe 산출물은 아직 검증하지 않았다.
 - 현재 `unittest` 8개 통과. 별도로 Windows에서 트레이 시작·종료, 중복 실행 창 활성화, 실제 루프백 감시 장치 열기·닫기를 확인했다. 자동 테스트에는 실제 곡 인식률, 장시간 안정성, 모든 출력 장치, 배포 exe가 포함되지 않는다.
 

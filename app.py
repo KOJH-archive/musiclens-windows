@@ -17,7 +17,7 @@ import numpy as np
 import pyaudiowpatch as pyaudio
 from shazamio import Shazam
 
-from core import extract_song, make_wav, song_key
+from core import extract_song, make_wav, song_key, suppress_voice
 
 LOG = logging.getLogger("musiclens")
 
@@ -124,6 +124,7 @@ class MusicLens:
         self.enabled = True
         self.manual_requested = False
         self.interval = 15
+        self.separation_mode = "off"
         self.next_due = 0.0
         self.rate_limit_until = 0.0
         self.last_song_key = ""
@@ -228,6 +229,12 @@ class MusicLens:
         self.interval_choice.set("15초")
         self.interval_choice.pack(side="right")
         self.interval_choice.bind("<<ComboboxSelected>>", self._update_interval)
+        self.separation_choice = ttk.Combobox(
+            middle, values=["분리 안 함", "빠른 음성 억제"], state="readonly", width=10,
+            font=("Malgun Gothic", 9))
+        self.separation_choice.set("분리 안 함")
+        self.separation_choice.pack(side="right", padx=(4, 0))
+        self.separation_choice.bind("<<ComboboxSelected>>", self._update_separation)
 
         self.status_var = tk.StringVar(value="자동 인식 중 · 재생 중인 소리만 인식")
         tk.Label(bar, textvariable=self.status_var, anchor="w", bg=COLOR_BG,
@@ -257,6 +264,10 @@ class MusicLens:
 
     def _update_interval(self, event: tk.Event | None = None) -> None:
         self._set_interval(int(self.interval_choice.get().replace("초", "")))
+
+    def _update_separation(self, event: tk.Event | None = None) -> None:
+        self.separation_mode = "voice_suppress" if self.separation_choice.get() == "빠른 음성 억제" else "off"
+        self._set_status("빠른 음성 억제 사용" if self.separation_mode == "voice_suppress" else "음성 억제 사용 안 함")
 
     def _set_interval(self, interval: int) -> None:
         with self.state_lock:
@@ -325,6 +336,9 @@ class MusicLens:
                 if rms < MIN_RMS:
                     self.events.put(("status", "소리가 없어 검색 생략"))
                     continue
+                if self.separation_mode == "voice_suppress":
+                    self.events.put(("status", "음성과 음악 분리 중…"))
+                    wav_bytes = suppress_voice(wav_bytes)
                 self.events.put(("status", "음악 검색 중…"))
                 song = asyncio.run(recognize_audio(wav_bytes))
                 if song is None:
