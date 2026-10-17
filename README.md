@@ -4,6 +4,10 @@ MusicLens는 Windows 기본 출력 장치에서 재생되는 소리를 듣고 �
 
 > ShazamIO는 비공식 Shazam 접근 라이브러리입니다. 서버 가용성, 정확한 호출 한도, 장기 호환성은 보장되지 않습니다. 공식 상용 서비스로 제공하기 전에는 API와 이용 조건을 별도로 검토해야 합니다.
 
+## Development
+
+This project was developed and documented with assistance from Codex Work.
+
 ## 빠른 시작
 
 1. Windows 11에서 Python 3.12 또는 3.11과 `py` 런처가 설치되어 있는지 확인합니다.
