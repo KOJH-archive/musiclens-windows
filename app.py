@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -10,6 +12,7 @@ import tkinter as tk
 import webbrowser
 from tkinter import ttk
 from collections.abc import Callable
+from pathlib import Path
 from PIL import Image, ImageDraw
 import pystray
 
@@ -129,6 +132,8 @@ class MusicLens:
         self.rate_limit_until = 0.0
         self.last_song_key = ""
         self.last_song_date = ""
+        self.history_path = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "MusicLens" / "recognition-history.json"
+        self.song_alert_dates = self._load_song_alert_dates()
         self.popup: tk.Toplevel | None = None
         self.popup_after_id: str | None = None
         self.closing = False
@@ -142,6 +147,23 @@ class MusicLens:
         self.worker = threading.Thread(target=self._worker, name="musiclens-audio")
         self.worker.start()
         self.root.protocol("WM_DELETE_WINDOW", self._hide_settings)
+
+    def _load_song_alert_dates(self) -> dict[str, str]:
+        try:
+            data = json.loads(self.history_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def _save_song_alert_date(self, key: str, today: str) -> None:
+        self.song_alert_dates[key] = today
+        try:
+            self.history_path.parent.mkdir(parents=True, exist_ok=True)
+            self.history_path.write_text(
+                json.dumps(self.song_alert_dates, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except OSError:
+            LOG.warning("Could not save recognition history", exc_info=True)
 
     def _create_tray(self) -> pystray.Icon:
         def interval_action(seconds: int):
@@ -377,9 +399,10 @@ class MusicLens:
                     key = song_key(song)
                     checked_at = time.strftime("%H:%M:%S")
                     today = time.strftime("%Y-%m-%d")
-                    if key != self.last_song_key or today != self.last_song_date:
+                    if self.song_alert_dates.get(key) != today:
                         self.last_song_key = key
                         self.last_song_date = today
+                        self._save_song_alert_date(key, today)
                         self._show_popup(song)
                         self.last_result_var.set(f"{checked_at} {song['title'][:15]} · 새 곡 알림")
                         LOG.info("Recognition result: new song; notification shown")
