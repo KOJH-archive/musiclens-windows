@@ -31,6 +31,7 @@ ACTIVITY_SECONDS = 0.25
 ACTIVITY_WINDOWS = 2  # Ignore very short system sounds and clicks.
 POPUP_MS = 9000
 COOLDOWN_ON_RATE_LIMIT_SECONDS = 600
+RECOGNITION_RETRIES = 1
 COLOR_BG = "#141923"
 COLOR_INNER = "#202838"
 COLOR_TEXT = "#F1F5F9"
@@ -128,11 +129,14 @@ class MusicLens:
         self.manual_requested = False
         self.interval = 15
         self.separation_mode = "off"
+        self.settings_path = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "MusicLens" / "settings.json"
+        self._load_settings()
         self.next_due = 0.0
         self.rate_limit_until = 0.0
         self.last_song_key = ""
         self.last_song_date = ""
         self.history_path = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "MusicLens" / "recognition-history.json"
+        self.records_path = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "MusicLens" / "recognition-records.jsonl"
         self.song_alert_dates = self._load_song_alert_dates()
         self.popup: tk.Toplevel | None = None
         self.popup_after_id: str | None = None
@@ -154,6 +158,39 @@ class MusicLens:
             return data if isinstance(data, dict) else {}
         except (OSError, ValueError, TypeError):
             return {}
+
+    def _load_settings(self) -> None:
+        try:
+            data = json.loads(self.settings_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                interval = int(data.get("interval", self.interval))
+                if interval in (15, 30, 60, 120):
+                    self.interval = interval
+                if data.get("separation_mode") == "voice_suppress":
+                    self.separation_mode = "voice_suppress"
+        except (OSError, ValueError, TypeError):
+            pass
+
+    def _save_settings(self) -> None:
+        try:
+            self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+            self.settings_path.write_text(json.dumps({
+                "interval": self.interval,
+                "separation_mode": self.separation_mode,
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            LOG.warning("Could not save settings", exc_info=True)
+
+    def _append_record(self, status: str, song: dict | None = None) -> None:
+        record = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "status": status}
+        if song:
+            record.update({"title": song.get("title", ""), "artist": song.get("artist", "")})
+        try:
+            self.records_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.records_path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            LOG.warning("Could not save recognition record", exc_info=True)
 
     def _save_song_alert_date(self, key: str, today: str) -> None:
         self.song_alert_dates[key] = today
@@ -249,13 +286,13 @@ class MusicLens:
         self.once.pack(side="left", padx=(6, 4))
         self.interval_choice = ttk.Combobox(middle, values=["15초", "30초", "60초", "120초"],
                                              state="readonly", width=5, font=("Malgun Gothic", 9))
-        self.interval_choice.set("15초")
+        self.interval_choice.set(f"{self.interval}초")
         self.interval_choice.pack(side="right")
         self.interval_choice.bind("<<ComboboxSelected>>", self._update_interval)
         self.separation_choice = ttk.Combobox(
             middle, values=["분리 안 함", "빠른 음성 억제"], state="readonly", width=10,
             font=("Malgun Gothic", 9))
-        self.separation_choice.set("분리 안 함")
+        self.separation_choice.set("빠른 음성 억제" if self.separation_mode == "voice_suppress" else "분리 안 함")
         self.separation_choice.pack(side="right", padx=(4, 0))
         self.separation_choice.bind("<<ComboboxSelected>>", self._update_separation)
 
@@ -290,6 +327,7 @@ class MusicLens:
 
     def _update_separation(self, event: tk.Event | None = None) -> None:
         self.separation_mode = "voice_suppress" if self.separation_choice.get() == "빠른 음성 억제" else "off"
+        self._save_settings()
         self._set_status("빠른 음성 억제 사용" if self.separation_mode == "voice_suppress" else "음성 억제 사용 안 함")
 
     def _set_interval(self, interval: int) -> None:
@@ -297,6 +335,7 @@ class MusicLens:
             self.interval = interval
             self.next_due = min(self.next_due, time.monotonic() + interval)
         self.interval_choice.set(f"{interval}초")
+        self._save_settings()
         self.tray.update_menu()
         self.wakeup.set()
 
@@ -363,11 +402,19 @@ class MusicLens:
                     self.events.put(("status", "음성과 음악 분리 중…"))
                     wav_bytes = suppress_voice(wav_bytes)
                 self.events.put(("status", "음악 검색 중…"))
-                song = asyncio.run(recognize_audio(wav_bytes))
+                song = None
+                for attempt in range(RECOGNITION_RETRIES + 1):
+                    song = asyncio.run(recognize_audio(wav_bytes))
+                    if song is not None or attempt >= RECOGNITION_RETRIES:
+                        break
+                    self.events.put(("status", "첫 검색 실패 · 한 번 더 검색 중…"))
+                    time.sleep(0.5)
                 if song is None:
                     LOG.info("Recognition result: no match")
+                    self._append_record("no_match")
                     self.events.put(("no_match", None))
                 else:
+                    self._append_record("matched", song)
                     self.events.put(("song", (song, forced)))
             except Exception as exc:  # A failing network or audio driver should not terminate the app.
                 LOG.exception("Audio capture or music identification failed")
