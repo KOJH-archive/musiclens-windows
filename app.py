@@ -128,6 +128,7 @@ class MusicLens:
         self.next_due = 0.0
         self.rate_limit_until = 0.0
         self.last_song_key = ""
+        self.last_song_date = ""
         self.popup: tk.Toplevel | None = None
         self.popup_after_id: str | None = None
         self.closing = False
@@ -375,8 +376,10 @@ class MusicLens:
                     assert isinstance(song, dict)
                     key = song_key(song)
                     checked_at = time.strftime("%H:%M:%S")
-                    if key != self.last_song_key:
+                    today = time.strftime("%Y-%m-%d")
+                    if key != self.last_song_key or today != self.last_song_date:
                         self.last_song_key = key
+                        self.last_song_date = today
                         self._show_popup(song)
                         self.last_result_var.set(f"{checked_at} {song['title'][:15]} · 새 곡 알림")
                         LOG.info("Recognition result: new song; notification shown")
